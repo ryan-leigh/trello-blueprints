@@ -255,6 +255,7 @@ def main() -> None:
     card_due_complete = args.card_due_complete
     card_member_usernames = args.card_members_assigned
     card_label_names = args.card_labels
+
     board_id = get_board_id(access_key, access_token, board_name)
     list_id = get_list_id(access_key, access_token, board_id, board_name, list_name)
     card_member_ids = get_member_ids(access_key, access_token, board_id, card_member_usernames)
