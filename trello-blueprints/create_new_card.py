@@ -20,7 +20,8 @@ def get_args() -> argparse.Namespace:
     parser.add_argument('--card-due-date', dest='card_due_date', required=False)
     parser.add_argument('--card-start-date', dest='card_start_date', required=False)
     parser.add_argument('--card-due-complete', dest='card_due_complete', required=False)
-    parser.add_argument('--card-labels', dest='card_labels', required=False)
+    parser.add_argument('--card-members-assigned', dest='card_members_assigned', default='', required=False)
+    parser.add_argument('--card-labels', dest='card_labels', default='', required=False)
 
     args = parser.parse_args()
     return args
@@ -36,6 +37,7 @@ def get_board_id(access_key: str, access_token: str, board_name: str) -> list:
         'key': access_key,
         'token': access_token
     }
+
     response = requests.request(
         "GET",
         url,
@@ -103,7 +105,70 @@ def get_list_id(access_key: str, access_token: str, board_id: str, board_name: s
         sys.exit(errors.EXIT_CODE_UNKNOWN_ERROR)
 
 
-def get_label_ids(access_key: str, access_token: str, board_id: str, card_label_names: list) -> list:
+def get_all_member_ids(access_key: str, access_token: str, board_id: str) -> list:
+    url = f'https://api.trello.com/1/boards/{board_id}/memberships'
+    headers = {
+        "Accept": "application/json"
+    }
+    query = {
+        'key': access_key,
+        'token': access_token
+    }
+
+    response = requests.request(
+        "GET",
+        url,
+        headers=headers,
+        params=query
+    )
+
+    if response.status_code == 200:
+        print('Successfully got board members')
+        members = response.json()
+        return [member['idMember'] for member in members]
+    else:
+        return []
+
+
+def get_member(access_key: str, access_token: str, member_id: str) -> dict:
+    url = f'https://api.trello.com/1/members/{member_id}'
+    headers = {
+        "Accept": "application/json"
+    }
+    query = {
+        'key': access_key,
+        'token': access_token
+    }
+
+    response = requests.request(
+        "GET",
+        url,
+        headers=headers,
+        params=query
+    )
+
+    if response.status_code == 200:
+        print(f'Successfully got member {member_id}')
+        member = response.json()
+        return member
+    else:
+        return {}
+
+
+def get_member_ids(access_key: str, access_token: str, board_id: str, card_member_usernames: str) -> list:
+    card_member_usernames = card_member_usernames.split(',')
+    all_member_ids = get_all_member_ids(access_key, access_token, board_id)
+    member_ids = []
+    for member_id in all_member_ids:
+        member = get_member(access_key, access_token, member_id)
+        if 'username' in member:
+            if member['username'] in card_member_usernames:
+                member_ids.append(member_id)
+    return member_ids
+
+
+def get_label_ids(access_key: str, access_token: str, board_id: str, card_label_names: str) -> list:
+    card_label_names = card_label_names.split(',')
     url = f'https://api.trello.com/1/boards/{board_id}/labels'
     query = {
         'key': access_key,
@@ -134,7 +199,7 @@ def get_label_ids(access_key: str, access_token: str, board_id: str, card_label_
         sys.exit(errors.EXIT_CODE_UNKNOWN_ERROR)
 
 
-def create_new_card(access_key: str, access_token: str, list_id: str, card_title: str, card_description: str, card_position: str, card_due: str, card_start: str, card_due_complete: bool, card_label_ids: list) -> None:
+def create_new_card(access_key: str, access_token: str, list_id: str, card_title: str, card_description: str, card_position: str, card_due: str, card_start: str, card_due_complete: bool, card_member_ids: list, card_label_ids: list) -> None:
     url = "https://api.trello.com/1/cards"
     headers = {
         "Accept": "application/json"
@@ -149,6 +214,7 @@ def create_new_card(access_key: str, access_token: str, list_id: str, card_title
         'due': card_due,
         'start': card_start,
         'dueComplete': card_due_complete,
+        'idMembers': ','.join(card_member_ids),
         'idLabels':  ','.join(card_label_ids)
     }
 
@@ -161,7 +227,6 @@ def create_new_card(access_key: str, access_token: str, list_id: str, card_title
 
     if response.status_code == 200:
         print('Successfully created new card')
-        return response.json()
     elif response.status_code == 401:
         print("You do not have the required permissions. Check your Trello API key and Trello API token.")
         sys.exit(errors.EXIT_CODE_INVALID_CREDENTIALS)
@@ -188,10 +253,11 @@ def main() -> None:
     card_due = args.card_due_date
     card_start = args.card_start_date
     card_due_complete = args.card_due_complete
-    card_label_names = args.card_labels or []
-
+    card_member_usernames = args.card_members_assigned
+    card_label_names = args.card_labels
     board_id = get_board_id(access_key, access_token, board_name)
     list_id = get_list_id(access_key, access_token, board_id, board_name, list_name)
+    card_member_ids = get_member_ids(access_key, access_token, board_id, card_member_usernames)
     card_label_ids = get_label_ids(access_key, access_token, board_id, card_label_names)
 
     create_new_card(
@@ -203,6 +269,7 @@ def main() -> None:
         card_position,
         card_due, card_start,
         card_due_complete,
+        card_member_ids,
         card_label_ids
     )
 
